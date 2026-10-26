@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="在线番茄钟专注计时器，含实时系统日期时间显示">
+<title>番茄钟 · 专注计时</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E🍅%3C/text%3E%3C/svg%3E">
+<style>
+  @property --accent { syntax: '<color>'; inherits: true; initial-value: #e5484d; }
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100svh;
+    display: flex;
+    padding: 24px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--fg);
+    background: var(--bg);
+    transition: --accent .6s ease;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { --bg: #101014; --fg: #f2f2f5; --muted: #9a9aa3; --surface: #1a1a21; --border: #2c2c35; }
+  }
+  @media (prefers-color-scheme: light) {
+    body { --bg: #f7f6f5; --fg: #1d1d22; --muted: #70707a; --surface: #ffffff; --border: #e4e3e0; }
+  }
+  body[data-mode="focus"] { --accent: #e5484d; }
+  body[data-mode="short"] { --accent: #2fa96e; }
+  body[data-mode="long"]  { --accent: #5b6ee1; }
+
+  .app { width: min(520px, 100%); margin: auto; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: 17px; }
+  .brand .en { color: var(--muted); font-weight: 400; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+  .icon-btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    width: 40px; height: 40px; border-radius: 50%; font-size: 17px; cursor: pointer;
+    display: grid; place-items: center; transition: color .2s, border-color .2s;
+  }
+  .icon-btn:hover { color: var(--fg); border-color: var(--accent); }
+
+  .clock { text-align: center; margin: 22px 0 24px; }
+  .date-line { color: var(--muted); font-size: 14px; margin-bottom: 4px; }
+  .time-line { font-size: 30px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+
+  .modes {
+    display: flex; gap: 4px; justify-content: center; width: max-content; margin: 0 auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px;
+  }
+  .mode-btn {
+    border: 0; background: transparent; color: var(--muted);
+    height: 36px; padding: 0 18px; border-radius: 999px; font-size: 14px; font-family: inherit; cursor: pointer;
+    transition: color .2s, background .2s;
+  }
+  .mode-btn:hover { color: var(--fg); }
+  .mode-btn.active { background: var(--accent); color: #fff; font-weight: 500; }
+
+  .timer { position: relative; width: min(320px, 76vw); margin: 28px auto; }
+  .ring { display: block; width: 100%; height: auto; }
+  .ring-track { fill: none; stroke: color-mix(in srgb, var(--accent) 14%, transparent); stroke-width: 13; }
+  .ring-progress {
+    fill: none; stroke: var(--accent); stroke-width: 13; stroke-linecap: round;
+    transition: stroke-dashoffset .3s linear, filter .4s;
+  }
+  .timer.running .ring-progress { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 45%, transparent)); }
+  .timer-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; text-align: center;
+  }
+  .time-display {
+    font-size: clamp(52px, 15vw, 64px); font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: .01em;
+  }
+  .phase-label { color: var(--muted); font-size: 13px; }
+
+  .controls { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--fg);
+    border-radius: 999px; padding: 0 24px; height: 46px; min-width: 104px;
+    font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer;
+    transition: color .2s, border-color .2s, filter .2s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { color: #fff; filter: brightness(1.08); }
+
+  .stats { margin-top: 30px; text-align: center; }
+  .dots { display: flex; gap: 7px; justify-content: center; margin-bottom: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); transition: background .3s; }
+  .dot.on { background: var(--accent); }
+  .stat-text { color: var(--muted); font-size: 13px; }
+  .stat-text b { color: var(--fg); font-size: 15px; font-weight: 600; margin: 0 2px; }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--fg);
+    padding: 24px; width: min(380px, calc(100vw - 32px));
+    max-height: calc(100vh - 40px); overflow: auto;
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(4px); }
+  dialog h2 { font-size: 17px; margin: 0 0 6px; }
+  dialog form { margin: 0; }
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .field label { font-size: 14px; }
+  .field input[type="number"] {
+    width: 76px; height: 36px; padding: 0 10px; text-align: center;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); color: var(--fg); font: inherit; font-variant-numeric: tabular-nums;
+  }
+  .field input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .actions .btn { height: 40px; min-width: 0; }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+</style>
+</head>
+<body data-mode="focus">
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">🍅 番茄钟 <span class="en">Pomodoro</span></div>
+      <button id="settingsBtn" class="icon-btn" type="button" aria-label="设置" title="设置">⚙️</button>
+    </header>
+
+    <section class="clock" aria-label="当前系统日期和时间">
+      <div id="dateLine" class="date-line">—</div>
+      <div id="timeLine" class="time-line">--:--:--</div>
+    </section>
+
+    <nav class="modes" aria-label="计时模式">
+      <button class="mode-btn active" data-mode="focus" type="button" aria-pressed="true">专注</button>
+      <button class="mode-btn" data-mode="short" type="button" aria-pressed="false">短休息</button>
+      <button class="mode-btn" data-mode="long" type="button" aria-pressed="false">长休息</button>
+    </nav>
+
+    <section id="timerSection" class="timer" aria-label="倒计时">
+      <svg class="ring" viewBox="0 0 320 320" role="img" aria-label="计时进度环">
+        <circle class="ring-track" cx="160" cy="160" r="140"/>
+        <circle id="ringProgress" class="ring-progress" cx="160" cy="160" r="140" transform="rotate(-90 160 160)"/>
+      </svg>
+      <div class="timer-center">
+        <div id="timeDisplay" class="time-display">25:00</div>
+        <div id="phaseLabel" class="phase-label">准备就绪，开始专注</div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <button id="startBtn" class="btn primary" type="button">开始</button>
+      <button id="resetBtn" class="btn" type="button" title="快捷键 R">重置</button>
+      <button id="skipBtn" class="btn" type="button" title="快捷键 S">跳过</button>
+    </div>
+
+    <footer class="stats">
+      <div id="cycleDots" class="dots" aria-hidden="true"></div>
+      <p class="stat-text">今日已完成 <b id="doneCount">0</b> 个番茄<span id="statExtra"></span></p>
+    </footer>
+
+    <p id="liveStatus" class="sr-only" aria-live="polite"></p>
+  </main>
+
+  <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+    <form id="settingsForm">
+      <h2 id="settingsTitle">设置</h2>
+      <div class="field"><label for="setFocus">专注时长（分钟）</label><input id="setFocus" type="number" min="1" max="180" step="1"></div>
+      <div class="field"><label for="setShort">短休息（分钟）</label><input id="setShort" type="number" min="1" max="60" step="1"></div>
+      <div class="field"><label for="setLong">长休息（分钟）</label><input id="setLong" type="number" min="1" max="90" step="1"></div>
+      <div class="field"><label for="setEvery">长休息间隔（每几个番茄）</label><input id="setEvery" type="number" min="2" max="10" step="1"></div>
+      <div class="field"><label for="setAuto">结束后自动开始下一阶段</label><input id="setAuto" type="checkbox"></div>
+      <div class="field"><label for="setSound">完成时播放提示音</label><input id="setSound" type="checkbox"></div>
+      <div class="actions">
+        <button id="settingsCancel" class="btn" type="button">取消</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const MODE_META = {
+  focus: { label: '专注' },
+  short: { label: '短休息' },
+  long:  { label: '长休息' },
+};
+const DEFAULT_SETTINGS = { focus: 25, short: 5, long: 15, longEvery: 4, autoStart: false, sound: true };
+const LS_SETTINGS = 'pomodoro.settings.v1';
+const LS_STATS = 'pomodoro.stats.v1';
+const RING_RADIUS = 140;
+const RING_C = 2 * Math.PI * RING_RADIUS;
+
+const ringProgress = $('ringProgress');
+const timerSection = $('timerSection');
+const startBtn = $('startBtn');
+const settingsDialog = $('settingsDialog');
+const settingsForm = $('settingsForm');
+
+function clampInt(v, min, max, fallback) {
+  v = Math.round(Number(v));
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+function loadSettings() {
+  const s = { ...DEFAULT_SETTINGS };
+  try {
+    const raw = localStorage.getItem(LS_SETTINGS);
+    if (raw) Object.assign(s, JSON.parse(raw));
+  } catch (e) { /* 忽略损坏的本地数据 */ }
+  s.focus = clampInt(s.focus, 1, 180, DEFAULT_SETTINGS.focus);
+  s.short = clampInt(s.short, 1, 60, DEFAULT_SETTINGS.short);
+  s.long = clampInt(s.long, 1, 90, DEFAULT_SETTINGS.long);
+  s.longEvery = clampInt(s.longEvery, 2, 10, DEFAULT_SETTINGS.longEvery);
+  s.autoStart = !!s.autoStart;
+  s.sound = !!s.sound;
+  return s;
+}
+function todayStr(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function loadStats() {
+  const st = { date: todayStr(), count: 0 };
+  try {
+    const raw = localStorage.getItem(LS_STATS);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.date === todayStr() && Number.isFinite(p.count)) st.count = Math.max(0, Math.floor(p.count));
+    }
+  } catch (e) { /* 忽略损坏的本地数据 */ }
+  return st;
+}
+
+const settings = loadSettings();
+const stats = loadStats();
+const state = {
+  mode: 'focus',
+  totalMs: settings.focus * 60000,
+  remainingMs: settings.focus * 60000,
+  endAt: 0,
+  running: false,
+  focusDoneInCycle: 0,
+};
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtClock(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+function fmtDate(d) {
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 星期' + '日一二三四五六'.charAt(d.getDay());
+}
+
+let lastClockSecond = -1;
+function renderClock() {
+  const now = new Date();
+  if (now.getSeconds() === lastClockSecond) return;
+  lastClockSecond = now.getSeconds();
+  $('dateLine').textContent = fmtDate(now);
+  $('timeLine').textContent = fmtClock(now);
+}
+
+function fmtRemaining(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return Math.floor(total / 60) + ':' + pad(total % 60);
+}
+
+function renderTimer() {
+  $('timeDisplay').textContent = fmtRemaining(state.remainingMs);
+  const frac = state.totalMs > 0 ? Math.max(0, Math.min(1, state.remainingMs / state.totalMs)) : 0;
+  ringProgress.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+  let label;
+  if (state.running) {
+    if (state.mode === 'focus') label = '第 ' + (stats.count + 1) + ' 个番茄进行中';
+    else label = MODE_META[state.mode].label + '中…';
+  } else if (state.remainingMs < state.totalMs) {
+    label = '已暂停';
+  } else if (state.mode === 'focus') {
+    label = '准备就绪，开始专注';
+  } else if (state.mode === 'short') {
+    label = '休息一下，恢复精力';
+  } else {
+    label = '好好放松，犒劳自己';
+  }
+  $('phaseLabel').textContent = label;
+}
+
+function renderStats() {
+  $('doneCount').textContent = stats.count;
+  $('statExtra').textContent = ' · 约 ' + (stats.count * settings.focus) + ' 分钟专注';
+  const dotsEl = $('cycleDots');
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < settings.longEvery; i++) {
+    const d = document.createElement('span');
+    d.className = 'dot' + (i < state.focusDoneInCycle ? ' on' : '');
+    dotsEl.appendChild(d);
+  }
+}
+
+function updateTitle() {
+  document.title = state.running
+    ? fmtRemaining(state.remainingMs) + ' · ' + MODE_META[state.mode].label + ' — 番茄钟'
+    : '番茄钟 · 专注计时';
+}
+
+function setMode(mode) {
+  if (mode === 'focus' && state.mode === 'long') state.focusDoneInCycle = 0;
+  state.mode = mode;
+  state.totalMs = settings[mode] * 60000;
+  state.remainingMs = state.totalMs;
+  state.running = false;
+  state.endAt = 0;
+  document.body.dataset.mode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    const active = b.dataset.mode === mode;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  startBtn.textContent = '开始';
+  timerSection.classList.remove('running');
+  releaseWakeLock();
+  renderTimer();
+  updateTitle();
+}
+
+function toggleRun() {
+  ensureAudio();
+  if (state.running) {
+    state.remainingMs = Math.max(0, state.endAt - Date.now());
+    state.running = false;
+    state.endAt = 0;
+    startBtn.textContent = '继续';
+    timerSection.classList.remove('running');
+    releaseWakeLock();
+  } else {
+    if (state.remainingMs <= 0) state.remainingMs = state.totalMs;
+    state.endAt = Date.now() + state.remainingMs;
+    state.running = true;
+    startBtn.textContent = '暂停';
+    timerSection.classList.add('running');
+    requestWakeLock();
+  }
+  renderTimer();
+  updateTitle();
+}
+
+function resetTimer() {
+  state.running = false;
+  state.endAt = 0;
+  state.remainingMs = state.totalMs;
+  startBtn.textContent = '开始';
+  timerSection.classList.remove('running');
+  releaseWakeLock();
+  renderTimer();
+  updateTitle();
+}
+
+function completePhase() {
+  state.running = false;
+  state.endAt = 0;
+  timerSection.classList.remove('running');
+  releaseWakeLock();
+  playChime();
+  if (state.mode === 'focus') {
+    stats.count++;
+    try { localStorage.setItem(LS_STATS, JSON.stringify(stats)); } catch (e) { /* 存储不可用时忽略 */ }
+    state.focusDoneInCycle++;
+    const next = (state.focusDoneInCycle % settings.longEvery === 0) ? 'long' : 'short';
+    setMode(next);
+    $('liveStatus').textContent = '专注完成，进入' + MODE_META[next].label;
+  } else {
+    setMode('focus');
+    $('liveStatus').textContent = '休息结束，进入专注';
+  }
+  if (settings.autoStart) toggleRun();
+  renderStats();
+}
+
+function skipPhase() {
+  if (state.mode === 'focus') {
+    setMode('short');
+    $('liveStatus').textContent = '已跳过专注，进入短休息';
+  } else {
+    setMode('focus');
+    $('liveStatus').textContent = '已跳过休息，回到专注';
+  }
+  renderStats();
+}
+
+setInterval(() => {
+  renderClock();
+  if (state.running) {
+    state.remainingMs = state.endAt - Date.now();
+    if (state.remainingMs <= 0) {
+      state.remainingMs = 0;
+      completePhase();
+    } else {
+      renderTimer();
+      updateTitle();
+    }
+  }
+}, 250);
+
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch (e) { /* 浏览器不支持时静默降级 */ }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+}
+function playNote(at, freq) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(0.22, at + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(at);
+  o.stop(at + 0.55);
+}
+function playChime() {
+  if (!settings.sound || !audioCtx || audioCtx.state !== 'running') return;
+  const t = audioCtx.currentTime + 0.02;
+  playNote(t, 880);
+  playNote(t + 0.22, 1108.73);
+  playNote(t + 0.44, 1318.51);
+}
+
+let wakeLock = null;
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* 不支持时忽略 */ }
+}
+function releaseWakeLock() {
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) { /* 已释放则忽略 */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.running) requestWakeLock();
+});
+
+startBtn.addEventListener('click', toggleRun);
+$('resetBtn').addEventListener('click', resetTimer);
+$('skipBtn').addEventListener('click', skipPhase);
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.mode === state.mode) { resetTimer(); return; }
+    setMode(btn.dataset.mode);
+    $('liveStatus').textContent = '已切换到' + MODE_META[btn.dataset.mode].label;
+  });
+});
+
+$('settingsBtn').addEventListener('click', () => {
+  $('setFocus').value = settings.focus;
+  $('setShort').value = settings.short;
+  $('setLong').value = settings.long;
+  $('setEvery').value = settings.longEvery;
+  $('setAuto').checked = settings.autoStart;
+  $('setSound').checked = settings.sound;
+  settingsDialog.showModal();
+});
+$('settingsCancel').addEventListener('click', () => settingsDialog.close('cancel'));
+settingsForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const prevDur = settings[state.mode] * 60000;
+  settings.focus = clampInt($('setFocus').value, 1, 180, settings.focus);
+  settings.short = clampInt($('setShort').value, 1, 60, settings.short);
+  settings.long = clampInt($('setLong').value, 1, 90, settings.long);
+  settings.longEvery = clampInt($('setEvery').value, 2, 10, settings.longEvery);
+  settings.autoStart = $('setAuto').checked;
+  settings.sound = $('setSound').checked;
+  try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); } catch (e) { /* 存储不可用时忽略 */ }
+  state.focusDoneInCycle = Math.min(state.focusDoneInCycle, settings.longEvery);
+  if (!state.running && settings[state.mode] * 60000 !== prevDur) resetTimer();
+  renderStats();
+  settingsDialog.close('ok');
+  $('liveStatus').textContent = '设置已保存';
+});
+
+document.addEventListener('keydown', e => {
+  if (settingsDialog.open) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+  if (e.code === 'Space') { e.preventDefault(); toggleRun(); }
+  else if (e.key === 'r' || e.key === 'R') resetTimer();
+  else if (e.key === 's' || e.key === 'S') skipPhase();
+});
+
+ringProgress.style.strokeDasharray = String(RING_C);
+renderClock();
+renderTimer();
+renderStats();
+updateTitle();
+</script>
+</body>
+</html>
