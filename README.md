@@ -2,7 +2,7 @@
 
 一个单文件的在线番茄钟计时器，纯静态、无依赖、开箱即用。
 
-**在线访问：<https://zangxyds.github.io/pomodoro-timer/>**
+**在线访问：<https://zangxyyds.github.io/pomodoro-timer/>**
 
 ## 功能
 
